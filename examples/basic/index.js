@@ -3,6 +3,7 @@ const WebpackDevServer = require("webpack-dev-server");
 // const express = require('express')
 const webpackConfig = require("./webpack.config");
 const { uploadService } = require("../../index");
+const path = require("path");
 
 // const app = express()
 const compiler = Webpack(webpackConfig);

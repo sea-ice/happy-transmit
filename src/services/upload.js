@@ -9,7 +9,9 @@ const {
 } = require("../constants/errorCode");
 const {
   GENERATE_TRANSMIT_ID,
-  UPLOAD_FINISHED
+  UPLOAD_FINISHED,
+  URGE_MISSING_FRAME,
+  CONFIRM_GET_EXPECT_FRAME
 } = require("../constants/statusCode");
 
 const DEFAULT_OPTIONS = {
@@ -42,104 +44,153 @@ const uploadService = options => {
 
         conn.on("message", message => {
           const { transmitId, type } = message;
-          if (type === "query") {
-            if (transmission[transmitId]) {
-            }
-          } else if (type === "transmit") {
-            if (transmitId && transmission[transmitId]) {
-              const transmitRecord = transmission[transmitId]
-              const {
-                receivedFrames,
-                frameSize,
-                savePath,
-                expectFrame,
-                totalSize
-              } = transmitRecord;
+          if (type === "INIT_TRANSMIT") {
+            // create file
+            const { totalSize, frameSize = defaultFrameSize } = message;
 
-              const { frameData, frameIndex } = message;
-              const df = new DataFrame(frameData, frameIndex);
-              if (df.index > expectFrame) {
-                receivedFrames.push(df)
-              } else {
-                // df.index === expectFrame
-                let insertPos = 0
-                for (let i = 0, len = receivedFrames.length; i < len; i++) {
-                  if (receivedFrames[i].index > expectFrame) {
-                    insertPos = i
-                    break
-                  } else if (i === len - 1) {
-                    insertPos = len
-                  }
-                }
-                receivedFrames.splice(insertPos, 0, df)
+            // generate random filename
+            var randomFilename, savePath;
+            do {
+              randomFilename = randomStr();
+              savePath = path.join(saveDirectory, randomFilename);
+            } while (
+              fs.existsSync(savePath) ||
+              Object.values(transmission).some(
+                t => t.filename === randomFilename
+              )
+            );
 
-                // calculate next expectFrame
-                const nextIndex = df.index
-                while (receivedFrames[++insertPos]) {
-                  if (receivedFrames[insertPos].index !== ++nextIndex) {
-                    expectFrame = nextIndex
-                    break
-                  }
-                }
-                expectFrame = receivedFrames[insertPos] ? expectFrame : nextIndex + 1
-              }
-              if (
-                receivedFrames.length * frameSize > flushSizeThres &&
-                receivedFrames[0].index < expectFrame
-              ) {
-                const boundIndex = receivedFrames.findIndex(f => f.index > expectFrame)
-                var writeFrames
-                if (boundIndex === -1) {
-                  writeFrames = receivedFrames
-                  transmitRecord.receivedFrames = []
-                } else {
-                  writeFrames = receivedFrames.splice(0, boundIndex)
-                }
-                fs.writeFileSync(savePath + '.uploading', writeFrames, {
-                  mode: 'a'
-                })
-              }
-              if (expectFrame === Math.ceil(totalSize / frameSize)) {
-                // upload done
-                fs.renameSync(savePath + '.uploading', savePath)
-                conn.send(statusMessage(UPLOAD_FINISHED))
-              }
+            // add transmission record
+            var genTransmitId;
+            do {
+              genTransmitId = randomStr();
+            } while (genTransmitId in transmission);
+            transmission[genTransmitId] = {
+              filename: randomFilename,
+              totalSize,
+              frameSize,
+              receivedFrames: [],
+              expectFrame: 0,
+              savePath,
+              paused: false
+            };
+            conn.sendUTF(
+              statusMessage(GENERATE_TRANSMIT_ID, {
+                id: transmitId
+              })
+            );
+          } else if (type === "TRANSMIT") {
+            const transmitRecord = transmission[transmitId];
+
+            if (transmitRecord.paused) return;
+
+            const {
+              receivedFrames,
+              frameSize,
+              savePath,
+              expectFrame,
+              totalSize
+            } = transmitRecord;
+
+            const { frameData, frameIndex } = message;
+            const df = new DataFrame(frameData, frameIndex);
+            if (df.index > expectFrame) {
+              receivedFrames.push(df);
             } else {
-              // create file
-              const {
-                filename,
-                totalSize,
-                frameSize = defaultFrameSize
-              } = message;
-              const savePath = path.join(saveDirectory, filename);
-
-              const fileExists = fs.existsSync(savePath);
-              if (fileExists && !allowOverwrite) {
-                conn.sendUTF(errorMessage(UPLOAD_FILE_EXISTS));
-              } else {
-                if (
-                  Object.values(transmission).some(t => t.filename === filename)
-                ) {
-                  conn.sendUTF(errorMessage(SAME_TASK_CREATED));
-                  return;
+              // df.index === expectFrame
+              let insertPos = 0;
+              for (let i = 0, len = receivedFrames.length; i < len; i++) {
+                if (receivedFrames[i].index > expectFrame) {
+                  insertPos = i;
+                  break;
+                } else if (i === len - 1) {
+                  insertPos = len;
                 }
-                if (fileExists) fs.truncateSync(savePath);
-
-                const genTransmitId = randomStr();
-                transmission[genTransmitId] = {
-                  filename,
-                  totalSize,
-                  frameSize,
-                  receivedFrames: [],
-                  expectFrame: 0,
-                  savePath
-                };
-                conn.sendUTF(
-                  statusMessage(GENERATE_TRANSMIT_ID, {
-                    id: transmitId
-                  })
-                );
               }
+              receivedFrames.splice(insertPos, 0, df);
+
+              // calculate next expectFrame
+              const nextIndex = df.index;
+              while (receivedFrames[++insertPos]) {
+                if (receivedFrames[insertPos].index !== ++nextIndex) {
+                  expectFrame = nextIndex;
+                  break;
+                }
+              }
+              expectFrame = receivedFrames[insertPos]
+                ? expectFrame
+                : nextIndex + 1;
+              conn.send(
+                statusMessage(CONFIRM_GET_EXPECT_FRAME, {
+                  confirm: expectFrame
+                })
+              );
+            }
+            if (
+              receivedFrames.length * frameSize > flushSizeThres &&
+              receivedFrames[0].index < expectFrame
+            ) {
+              const boundIndex = receivedFrames.findIndex(
+                f => f.index > expectFrame
+              );
+              var writeFrames;
+              if (boundIndex === -1) {
+                writeFrames = receivedFrames;
+                transmitRecord.receivedFrames = [];
+              } else {
+                writeFrames = receivedFrames.splice(0, boundIndex);
+              }
+              fs.writeFileSync(savePath + ".uploading", writeFrames, {
+                mode: "a"
+              });
+            } else {
+              conn.send(
+                statusMessage(URGE_MISSING_FRAME, {
+                  expectFrame
+                })
+              );
+            }
+            if (expectFrame === Math.ceil(totalSize / frameSize)) {
+              // upload done
+              fs.renameSync(savePath + ".uploading", savePath);
+              delete transmission[transmitId];
+              conn.send(statusMessage(UPLOAD_FINISHED));
+            }
+          } else if (type === "PAUSE_TRANSMIT") {
+            if (transmission[transmitId]) {
+              const transmitRecord = transmission[transmitId];
+
+              if (transmitRecord.paused) return;
+              transmitRecord.paused = true;
+
+              const { receivedFrames, expectFrame } = transmitRecord;
+              const boundIndex = receivedFrames.findIndex(
+                f => f.index > expectFrame
+              );
+              if (boundIndex !== -1) {
+                const writeFrames = receivedFrames.slice(0, boundIndex);
+                fs.writeFileSync(savePath + ".uploading", writeFrames, {
+                  mode: "a"
+                });
+              }
+              transmitRecord.receivedFrames = [];
+            } else {
+              console.log("Have not found transmitId: " + transmitId);
+            }
+          } else if (type === "QUERY_TRANSMIT_PROGRESS") {
+            if (transmission[transmitId]) {
+              const transmitRecord = transmission[transmitId];
+
+              transmitRecord.paused = false;
+
+              const { expectFrame } = transmitRecord;
+              conn.send(
+                statusMessage(URGE_MISSING_FRAME, {
+                  expectFrame
+                })
+              );
+            } else {
+              console.log("Have not found transmitId: " + transmitId);
             }
           }
         });

@@ -2,7 +2,7 @@ const path = require("path");
 
 module.exports = {
   entry: {
-    demo: "./src/index.js"
+    demo: path.resolve(__dirname, "./src/index.js")
   },
   output: {
     path: path.resolve(__dirname, "dist")
@@ -11,9 +11,11 @@ module.exports = {
     port: 8090
   },
   module: {
-    rules: {
-      test: /\.jsx?$/,
-      use: "babel-loader"
-    }
+    rules: [
+      {
+        test: /\.jsx?$/,
+        use: "babel-loader"
+      }
+    ]
   }
 };

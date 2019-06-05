@@ -1,13 +1,19 @@
 const GENERATE_TRANSMIT_ID = "GENERATE_TRANSMIT_ID";
 const UPLOAD_FINISHED = "UPLOAD_FINISHED";
+const URGE_MISSING_FRAME = "URGE_MISSING_FRAME";
+const CONFIRM_GET_EXPECT_FRAME = "CONFIRM_GET_EXPECT_FRAME";
 
 const message = {
   [GENERATE_TRANSMIT_ID]: "Task not created",
-  [UPLOAD_FINISHED]: "upload finished"
+  [UPLOAD_FINISHED]: "upload finished",
+  [URGE_MISSING_FRAME]: 'desperate for missing frame',
+  [CONFIRM_GET_EXPECT_FRAME]: 'confirm get missing frame'
 };
 
 module.exports = {
   GENERATE_TRANSMIT_ID,
   UPLOAD_FINISHED,
+  URGE_MISSING_FRAME,
+  CONFIRM_GET_EXPECT_FRAME,
   message
 };
