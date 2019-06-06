@@ -9,12 +9,15 @@
   "author": "Jack",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.17.1"
+    "express": "^4.17.1",
+    "mime": "^2.4.3"
   },
   "devDependencies": {
+    "@babel/core": "^7.4.5",
     "@babel/preset-env": "^7.4.5",
     "@babel/preset-react": "^7.0.0",
     "babel-loader": "^8.0.6",
+    "copy-webpack-plugin": "^5.0.3",
     "eslint": "^5.16.0",
     "webpack": "^4.33.0",
     "webpack-dev-server": "^3.5.1"

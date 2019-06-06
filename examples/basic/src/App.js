@@ -11,19 +11,20 @@ export default class App extends Component {
     };
   }
   onFileChange(e) {
-    this.selectedFile = e.target.value;
+    this.selectedFile = e.target.files[0];
+    console.log(this.selectedFile)
     this.setState({
       showUploadBtn: true
     });
   }
   upload() {
     const task = createUploadTask({
-      uploadWsURL: "ws://localhost:8080",
+      uploadWsURL: "ws://localhost:8082",
       file: this.selectedFile,
-      filename: "", // rename the file
       frameSize: 20 * 1024
     });
     task.start();
+
     const { uploadTasks } = this.state;
     uploadTasks.push(task);
     this.setState({
